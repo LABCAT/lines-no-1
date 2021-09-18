@@ -1,14 +1,26 @@
 import React, { useRef, useEffect } from "react";
 import * as p5 from "p5";
+import Tone from 'tone'
+import { Midi } from '@tonejs/midi'
 
+import audio from "../audio/lines-no-1.ogg";
+import midi from "../audio/lines-no-1.mid";
 
-
-const P5Sketch = () => {
+const P5SketchWithAudio = () => {
+    Tone.Transport.PPQ = 3840 * 4;
     const sketchRef = useRef();
 
     const Sketch = p => {
 
         p.canvas = null;
+
+        p.canvasWidth = window.innerWidth;
+
+        p.canvasHeight = window.innerHeight;
+
+        p.audioLoaded = false;
+
+        p.player = null;
 
         p.lines = [];
 
@@ -16,42 +28,78 @@ const P5Sketch = () => {
         
         p.maxLines = 1000;
 
-        p.canvasWidth = window.innerWidth;
+        p.preload = () => {
+            Midi.fromUrl(midi).then(
+                function(result) {
+                    console.log(result.tracks);
+                    const noteSet1 = result.tracks[4].notes; // Thor 1 - Percutron
+                    const noteSet2 = result.tracks[3].notes; // Synth 2 - Hyperbottom
+                    p.player = new Tone.Player(audio, () => { p.audioLoaded = true; }).toMaster();
+                    p.player.sync().start(0);
+                    p.scheduleCueSet(noteSet1, 'executeCueSet1');
+                    p.scheduleCueSet(noteSet2, 'executeCueSet2');
+                }
+            );
+        }
 
-        p.canvasHeight = window.innerHeight;
+        p.scheduleCueSet = (noteSet, callbackName)  => {
+            let lastTicks = -1;
+            for (let i = 0; i < noteSet.length; i++) {
+                const note = noteSet[i],
+                    { ticks, time } = note;
+                if(ticks !== lastTicks){
+                    Tone.Transport.schedule(
+                        () => {
+                            p.[callbackName](note);
+                        }, 
+                        time
+                    );
+                    lastTicks = ticks;
+                }
+            }
+        } 
 
         p.setup = () => {
             p.canvas = p.createCanvas(p.canvasWidth, p.canvasHeight);
-
+            p.bgColour = 0; 
             for (let i = 0; i < p.initialLines && i < p.maxLines; i++) {
                 p.lines.push(p.createLine());
             }
 
-            console.log(p.lines);
         };
 
         p.draw = () => {
-            p.background(0);
+            p.background(p.bgColour);
+            if(p.audioLoaded && p.player.state === 'started'){
+                // Step all the lines first
+                // Use a fixed delta-time
+                const dt = 1 / 12;
+                p.lines.forEach(line => p.stepLine(line, dt));
 
-            // Step all the lines first
-            // Use a fixed delta-time
-            const dt = 1 / 24;
-            p.lines.forEach(line => p.stepLine(line, dt));
+                p.noFill();
+                p.push();
+                p.translate(p.width / 2, p.height / 2);
+                p.scale(p.width, p.width);
+                p.strokeWeight(0.01);
+                p.lines.forEach(({ origin, position, colour }) => {
+                    const [x0, y0] = origin;
+                    const [x1, y1] = position;
+                    p.stroke(colour);
+                    p.line(x0, y0, x1, y1);
+                });
+                p.pop();
+            }
+        };
 
-            // Now draw all the lines
-            const dim = Math.min(p.width, p.height);
-            p.noFill();
-            p.push();
-            p.translate(p.width / 2, p.height / 2);
-            p.scale(p.width, p.width);
-            p.strokeWeight(0.01);
-            p.lines.forEach(({ origin, position, colour }) => {
-                const [x0, y0] = origin;
-                const [x1, y1] = position;
-                p.stroke(colour);
-                p.line(x0, y0, x1, y1);
-            });
-            p.pop();
+        p.executeCueSet1 = (note) => {
+            p.lines = [];
+            for (let i = 0; i < p.initialLines && i < p.maxLines; i++) {
+                p.lines.push(p.createLine());
+            }
+        };
+
+        p.executeCueSet2 = (note) => {
+            p.bgColour = p.color(p.random(255), p.random(255), p.random(255));
         };
 
         p.createLine = (origin, direction) => {
@@ -215,6 +263,17 @@ const P5Sketch = () => {
             return sa;
         }
 
+        p.mousePressed = () => {
+            if(p.audioLoaded){
+                if (p.player.state === "started") {
+                    Tone.Transport.pause(); // Use the Tone.Transport to pause audio
+                } 
+                else if (p.player.state === "stopped") {
+                    Tone.Transport.start(); // Use the Tone.Transport to start again
+                }
+            }
+        };
+
         p.updateCanvasDimensions = () => {
             p.canvasWidth = window.innerWidth;
             p.canvasHeight = window.innerHeight;
@@ -254,4 +313,4 @@ const P5Sketch = () => {
     );
 };
 
-export default P5Sketch;
+export default P5SketchWithAudio;

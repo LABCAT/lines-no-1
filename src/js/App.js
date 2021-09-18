@@ -1,8 +1,8 @@
-import P5Sketch from './P5Sketch'
+import P5SketchWithAudio from './P5SketchWithAudio'
 
 function App() {
   return (
-    <P5Sketch/>
+    <P5SketchWithAudio/>
   );
 }
 
