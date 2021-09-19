@@ -65,8 +65,8 @@ const P5SketchWithAudio = () => {
             p.randomColor = require('randomcolor');
             p.bgColour = 0; 
             p.canvas = p.createCanvas(p.canvasWidth, p.canvasHeight);
-            p.darkBGs = p.randomColor({luminosity: 'dark', count: 31});
-            p.lightBGs = p.randomColor({luminosity: 'light', count: 31});
+            p.darkBGs = p.randomColor({luminosity: 'dark', count: 12});
+            p.lightBGs = p.randomColor({luminosity: 'light', count: 12});
             p.preloadLineArrays();
         };
 
@@ -117,11 +117,12 @@ const P5SketchWithAudio = () => {
         p.currentCue2 = 1;
 
         p.executeCueSet2 = (note) => {
-            const modulo = p.currentCue2 % 31;
-            if(modulo === 0) {
+            if((note.ticks / Tone.Transport.PPQ) % 8 === 4) {
                 p.darkMode = !p.darkMode;
             }
-            p.bgColour = p.darkMode ? p.darkBGs[modulo] : p.lightBGs[modulo];
+            if((note.ticks / Tone.Transport.PPQ) % 4 === 0){
+                p.bgColour = p.darkMode ? p.random(p.darkBGs) : p.random(p.lightBGs);
+            }
             p.currentCue2++;
         };
 
