@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from "react";
+import "./helpers/Globals";
+import "p5/lib/addons/p5.sound";
 import * as p5 from "p5";
-import Tone from 'tone'
 import { Midi } from '@tonejs/midi'
 import Line from "./Line.js";
 
@@ -8,7 +9,6 @@ import audio from "../audio/lines-no-1.ogg";
 import midi from "../audio/lines-no-1.mid";
 
 const P5SketchWithAudio = () => {
-    Tone.Transport.PPQ = 3840 * 4;
     const sketchRef = useRef();
 
     const Sketch = p => {
@@ -22,6 +22,8 @@ const P5SketchWithAudio = () => {
         p.audioLoaded = false;
 
         p.player = null;
+        
+        p.PPQ = 3840 * 4;
 
         p.lines = [];
 
@@ -32,12 +34,11 @@ const P5SketchWithAudio = () => {
         p.maxLines = 64;
 
         p.preload = () => {
+            p.song = p.loadSound(audio);
             Midi.fromUrl(midi).then(
                 function(result) {
                     const noteSet1 = result.tracks[4].notes; // Thor 1 - Percutron
                     const noteSet2 = result.tracks[3].notes; // Synth 2 - Hyperbottom
-                    p.player = new Tone.Player(audio, () => { p.audioLoaded = true; }).toMaster();
-                    p.player.sync().start(0);
                     p.scheduleCueSet(noteSet1, 'executeCueSet1');
                     p.scheduleCueSet(noteSet2, 'executeCueSet2');
                 }
@@ -50,12 +51,8 @@ const P5SketchWithAudio = () => {
                 const note = noteSet[i],
                     { ticks, time } = note;
                 if(ticks !== lastTicks){
-                    Tone.Transport.schedule(
-                        () => {
-                            p.[callbackName](note);
-                        }, 
-                        time
-                    );
+                    note.currentCue = i + 1;
+                    p.song.addCue(time, p.[callbackName], note);
                     lastTicks = ticks;
                 }
             }
@@ -63,8 +60,8 @@ const P5SketchWithAudio = () => {
 
         p.setup = () => {
             p.randomColor = require('randomcolor');
-            p.bgColour = 0; 
             p.canvas = p.createCanvas(p.canvasWidth, p.canvasHeight);
+            p.bgColour = 0;
             p.darkBGs = p.randomColor({luminosity: 'dark', count: 12});
             p.lightBGs = p.randomColor({luminosity: 'light', count: 12});
             p.preloadLineArrays();
@@ -72,17 +69,22 @@ const P5SketchWithAudio = () => {
 
         p.draw = () => {
             p.background(p.bgColour);
-            p.lines.forEach(line => line.draw());
-            if(p.audioLoaded && p.player.state === 'started'){
-                p.lines.forEach(line => line.update());
+            if(p.lines.length){
+                p.lines.forEach(line => line.draw());
+                if(p.song.isPlaying()){
+                    p.lines.forEach(line => line.update());
+                }
             }
         };
 
         p.preloadLineArrays = () => {
-            
+            let divisor = 12;
             for (let i = 0; i < 185; i++) {
+                if(i % 31 === 0){
+                    divisor = divisor - 2;
+                }
                 let darkMode = true;
-                if((i > 62 && i <= 93) || (i > 124 && i <= 155) ) {
+                if((i > 61 && i <= 92) || (i > 123 && i <= 154) ) {
                     darkMode = false;
                 }
                 const limit = p.random(p.minLines, p.maxLines),
@@ -91,51 +93,58 @@ const P5SketchWithAudio = () => {
                     colours = p.randomColor({luminosity: luminosity, count: limit, format: format});
                 if(i > 30) {
                     for (let j = 0; j < limit; j++) {
-                        p.lines.push(new Line(p, colours[j], i / 10));
+                        p.lines.push(new Line(p, divisor, colours[j], i / 10));
                     }
                 }
                 else {
                     for (let j = 0; j < limit; j++) {
-                        p.lines.push(new Line(p));
+                        p.lines.push(new Line(p, divisor));
                     }
                 }
                 p.lineArrays.push(p.lines);
                 p.lines = [];
+                
             }
-            
         };
 
         p.darkMode = true;
 
-        p.currentCue1 = 1;
-
         p.executeCueSet1 = (note) => {
-            p.lines = p.lineArrays[p.currentCue1 - 1];
-            p.currentCue1++;
+            const { currentCue } = note;
+            p.lines = p.lineArrays[currentCue - 1];
         };
 
-        p.currentCue2 = 1;
 
         p.executeCueSet2 = (note) => {
-            if((note.ticks / Tone.Transport.PPQ) % 8 === 4) {
+            const { ticks } = note;
+            if((ticks / p.PPQ) % 8 === 4) {
                 p.darkMode = !p.darkMode;
             }
-            if((note.ticks / Tone.Transport.PPQ) % 4 === 0){
+            if((ticks / p.PPQ) % 4 === 0){
                 p.bgColour = p.darkMode ? p.random(p.darkBGs) : p.random(p.lightBGs);
             }
-            p.currentCue2++;
         };
 
         p.mousePressed = () => {
-            if(p.audioLoaded){
-                if (p.player.state === "started") {
-                    Tone.Transport.pause(); // Use the Tone.Transport to pause audio
-                } 
-                else if (p.player.state === "stopped") {
-                    Tone.Transport.start(); // Use the Tone.Transport to start again
+            if (p.song.isPlaying()) {
+                p.song.pause();
+            } else {
+                if (parseInt(p.song.currentTime()) >= parseInt(p.song.buffer.duration)) {
+                    p.reset();
                 }
+                //document.getElementById("play-icon").classList.add("fade-out");
+                p.canvas.addClass("fade-in");
+                p.song.play();
             }
         };
+
+        p.reset = () => {
+            p.bgColour = 0;
+            p.darkBGs = p.randomColor({luminosity: 'dark', count: 12});
+            p.lightBGs = p.randomColor({luminosity: 'light', count: 12});
+            p.lineArrays = [];
+            p.preloadLineArrays();
+        }
 
         p.updateCanvasDimensions = () => {
             p.canvasWidth = window.innerWidth;
